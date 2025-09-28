@@ -282,6 +282,12 @@ object SettingsScreen {
                 subtitle = stringResource(R.string.enable_deep_analysis_description),
                 onClick = { viewModel.onEnableDeepAnalysisClick() }
             )
+            Switcher(
+                value = viewModel.wakeUpWhileScanning,
+                title = stringResource(R.string.settings_keep_screen_on_while_scanning_title),
+                subtitle = stringResource(R.string.settings_keep_screen_on_while_scanning_description),
+                onClick = { viewModel.toggleWakeUpOnScreen() }
+            )
         }
     }
 

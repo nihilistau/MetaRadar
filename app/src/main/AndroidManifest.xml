@@ -21,6 +21,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.WRITE_SETTINGS"/>
 
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
@@ -44,6 +46,7 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:screenOrientation="user"
+            android:enableOnBackInvokedCallback="false"
             android:theme="@style/Theme.MetaRadar">
 
             <intent-filter>

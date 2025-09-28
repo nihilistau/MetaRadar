@@ -11,6 +11,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
+import androidx.core.net.toUri
 import f.cking.software.R
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -66,6 +67,22 @@ class PermissionHelper(
             }
         }
         fetchBackgroundLocationPermission()
+    }
+
+    fun openAppPermissions() {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", context.packageName, null)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        activityProvider.requireActivity().startActivity(intent)
+    }
+
+    fun requestWriteSettingsPermission() {
+        val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS).apply {
+            data = "package:${context.packageName}".toUri()
+        }
+        activityProvider.requireActivity().startActivity(intent)
+        Toast.makeText(context, context.getString(R.string.modify_settings_toast), Toast.LENGTH_LONG).show()
     }
 
     private fun requestPermissions(

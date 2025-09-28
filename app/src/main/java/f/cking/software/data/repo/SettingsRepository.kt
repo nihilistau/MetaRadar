@@ -128,6 +128,14 @@ class SettingsRepository(
         sharedPreferences.edit { putBoolean(KEY_WHAT_IS_THIS_APP_FOR_WAS_SHOWN, value) }
     }
 
+    fun getWakeUpScreenWhileScanning(): Boolean {
+        return sharedPreferences.getBoolean(KEY_WAKE_UP_SCREEN_WHILE_SCANNING, false)
+    }
+
+    fun setWakeUpScreenWhileScanning(value: Boolean) {
+        sharedPreferences.edit { putBoolean(KEY_WAKE_UP_SCREEN_WHILE_SCANNING, value) }
+    }
+
     companion object {
         private const val KEY_GARBAGING_TIME = "key_garbaging_time"
         private const val KEY_USE_GPS_ONLY = "key_use_gps_location_only"
@@ -142,6 +150,7 @@ class SettingsRepository(
         private const val KEY_ENABLE_DEEP_ANALYSIS = "key_enable_deep_analysis"
         private const val KEY_DISCLAIMER_WAS_ACCEPTED = "key_disclaimer_was_accepted"
         private const val KEY_WHAT_IS_THIS_APP_FOR_WAS_SHOWN = "what_is_this_app_for_was_shown"
+        private const val KEY_WAKE_UP_SCREEN_WHILE_SCANNING = "key_wake_up_screen_while_scanning"
 
         const val NO_APP_LAUNCH_TIME = -1L
         const val NO_ENJOY_THE_APP_STARTING_POINT = -1L

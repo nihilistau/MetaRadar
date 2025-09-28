@@ -19,6 +19,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import f.cking.software.data.repo.SettingsRepository
 import f.cking.software.domain.model.BleScanDevice
 import f.cking.software.toBase64
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +37,7 @@ class BleScannerHelper(
     private val bleFiltersProvider: BleFiltersProvider,
     private val appContext: Context,
     private val powerModeHelper: PowerModeHelper,
+    private val settingsRepository: SettingsRepository,
 ) {
 
     private var bluetoothAdapter: BluetoothAdapter? = null
@@ -352,10 +354,16 @@ class BleScannerHelper(
             currentScanTimeMs = System.currentTimeMillis()
 
             val powerMode = powerModeHelper.powerMode()
-            val scanFilters = if (powerMode.useRestrictedBleConfig) {
+            val keepScreenOn = powerMode.tryToTurnOnScreen && settingsRepository.getWakeUpScreenWhileScanning()
+            val scanFilters = if (powerMode.useRestrictedBleConfig && !keepScreenOn) {
                 bleFiltersProvider.getBackgroundFilters()
             } else {
                 listOf(ScanFilter.Builder().build())
+            }
+
+            if (powerMode.tryToTurnOnScreen && settingsRepository.getWakeUpScreenWhileScanning()) {
+                Timber.tag(TAG).d("Will try to turn on screen for ${powerMode.scanDuration} ms")
+                powerModeHelper.wakeScreenTemporarily(powerMode.scanDuration)
             }
 
             val scanSettings = ScanSettings.Builder()

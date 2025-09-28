@@ -78,11 +78,10 @@ class NotificationsHelper(
             context.resources.getQuantityString(R.plurals.notification_profiles_are_near_you, profiles.count(), profiles.count())
         }
 
-        val content = profiles.flatMap { it.matched }
-            .joinToString(
-                separator = ", ",
-                postfix = context.getString(R.string.devices_matched_postfix)
-            ) { it.buildDisplayName() }
+        val devicesList = profiles.flatMap { it.matched }
+            .joinToString(separator = ", ") { it.buildDisplayName() }
+
+        val content = context.getString(R.string.devices_matched_postfix, devicesList)
 
         val openAppPendingIntent = getOpenAppIntent()
 

@@ -17,17 +17,17 @@ apply {
 }
 
 android {
-    compileSdk = 35
+    compileSdk = 36
     namespace = "f.cking.software"
     val javaConfig: JavaConfig = JavaConfig.getByString(getEnvJavaConfigVersion())
 
     defaultConfig {
         applicationId = "f.cking.software"
         minSdk = 29
-        targetSdk = 35
+        targetSdk = 36
 
-        versionCode = 1708536376
-        versionName = "0.30.0-beta"
+        versionCode = 1708536377
+        versionName = "0.31.0-beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -175,6 +175,7 @@ dependencies {
     implementation(libs.compose.tooling.preview)
     implementation(libs.compose.material3)
     implementation(libs.compose.animation)
+    implementation(libs.compose.material.icons)
 
     // room
     implementation(libs.room.runtime)

@@ -91,6 +91,9 @@
     <string name="app_info_build_type_release">Build type: Release</string>
     <string name="app_info_build_type_debug">Build type: Debug</string>
     <string name="app_info_distribution">Distribution: %s</string>
+    <string name="modify_settings_toast">This permission is needed to dim your screen while background scanning to safe battery</string>
+    <string name="settings_keep_screen_on_while_scanning_title">Keep Screen On for BLE Scanning</string>
+    <string name="settings_keep_screen_on_while_scanning_description">Enabling this feature keeps the screen temporarily awake while the app scans for BLE devices. On Android, BLE scanning is limited or paused when the screen is off, so turning this on ensures accurate device detection. Disabling this feature saves battery, but scanning may be less accurate when the screen is off.</string>
     <string name="project_github_title">%s is an open-source project. You can find the source on GitHub. Feel free to ask your questions, contribute, and star the repository!</string>
     <string name="open_github">Go to GitHub</string>
     <string name="secret_cat">A secret cat photo</string>
@@ -307,7 +310,7 @@
         <item quantity="other">%d devices match your Alert Rules nearby!</item>
     </plurals>
 
-    <string name="devices_matched_postfix">\" devices matched!\"</string>
+    <string name="devices_matched_postfix">\"%s\" devices matched!</string>
     <string name="scanner_notification_channel_name">Background scan service notification</string>
     <string name="device_found_notification_channel_name">Radar notifications</string>
     <string name="location_is_turned_off_title">Location is turned off</string>
@@ -361,7 +364,7 @@
 
     <string name="bluetooth_status_paired">paired</string>
     <string name="bluetooth_status_paired_description">Device is paired</string>
-    
+
     <string name="unlowful_usage_disclaimer">This project is developed solely for educational, security research, and personal investigative purposes. The author does not endorse or encourage any use of this software for unlawful or unethical activities. You are solely responsible for ensuring your use of this tool complies with all applicable laws and regulations.</string>
 
     <string name="what_is_this_app_for_title">What is this app for</string>

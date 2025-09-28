@@ -6,6 +6,10 @@ import f.cking.software.data.DataModule
 import f.cking.software.domain.interactor.InteractorsModule
 import f.cking.software.domain.interactor.SaveFirstAppLaunchTimeInteractor
 import f.cking.software.ui.UiModule
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import org.koin.android.ext.android.getKoin
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
@@ -15,12 +19,19 @@ import timber.log.Timber
 
 class TheApp : Application() {
 
+    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     override fun onCreate() {
         super.onCreate()
         applyDynamicColors()
         initDi()
         initTimber()
         saveFirstLaunchTime()
+    }
+
+    override fun onTerminate() {
+        super.onTerminate()
+        applicationScope.cancel()
     }
 
     fun restartKoin() {
@@ -40,7 +51,7 @@ class TheApp : Application() {
         startKoin {
             androidContext(this@TheApp)
             modules(
-                DataModule(SHARED_PREF_NAME, DATABASE_NAME).module,
+                DataModule(SHARED_PREF_NAME, DATABASE_NAME, applicationScope).module,
                 InteractorsModule.module,
                 UiModule.module,
                 module { single { this@TheApp } }

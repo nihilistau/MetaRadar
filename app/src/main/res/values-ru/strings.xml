@@ -246,7 +246,7 @@
         <item quantity="other">обнаружено %d профилей!</item>
     </plurals>
 
-    <string name="devices_matched_postfix">\" устройство совпало!\"</string>
+    <string name="devices_matched_postfix">\"%s\" устройство совпало!</string>
     <string name="scanner_notification_channel_name">Уведомление о фоновой работе сканера</string>
     <string name="device_found_notification_channel_name">Уведомление радара</string>
     <string name="location_is_turned_off_title">Геолокация выключена</string>

@@ -19,7 +19,7 @@ import f.cking.software.domain.model.BleScanDevice
 import f.cking.software.domain.model.JournalEntry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Runnable
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
@@ -50,6 +50,7 @@ class BgScanService : Service() {
     private var locationDisabledWasReported: Boolean = false
     private var bluetoothDisabledWasReported: Boolean = false
     private var backgroundLocationRestrictedWasReported: Boolean = false
+    private var observeScreenBrightnessJob: Job? = null
     private val nextScanRunnable = Runnable {
         scan()
     }
@@ -68,6 +69,7 @@ class BgScanService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        observeScreenBrightnessJob = powerModeHelper.observeScreenBrightnessMode()
         updateState(ScannerState.IDLING)
     }
 
@@ -121,6 +123,7 @@ class BgScanService : Service() {
         super.onDestroy()
         Timber.d("Background service destroyed")
         scope.cancel()
+        observeScreenBrightnessJob?.cancel()
         updateState(ScannerState.DISABLED)
         bleScannerHelper.stopScanning()
         locationProvider.stopLocationListening()

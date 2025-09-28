@@ -19,15 +19,16 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun Modifier.withDropEffect(dropEffectState: DropEffectState): Modifier = composed {
 
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || !ShaderCapability.canUseShader(LocalContext.current)) {
         return@composed this
     }
 
-    val shader = remember { RuntimeShader(Shaders.WATER_DROP) }
+    var shader = remember { RuntimeShader(Shaders.WATER_DROP) }
     val factor = remember { Animatable(0f) }
 
     val dropEvent = dropEffectState.dropEvent

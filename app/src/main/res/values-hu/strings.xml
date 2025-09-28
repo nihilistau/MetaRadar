@@ -60,7 +60,7 @@
     <string name="device_details_week">Hét</string>
     <string name="device_found_notification_channel_name">Radar értesítései</string>
     <string name="device_list_placeholder">Nincs még adat. A szkennelés indításához kattints a Szkennelés gombra</string>
-    <string name="devices_matched_postfix"> eszközök párosítva!</string>
+    <string name="devices_matched_postfix">\"%s\" eszközök párosítva!</string>
     <string name="directory_was_not_selected">Nem lett könyvtár kiválasztva</string>
     <string name="discard_changes">Változtatások elvetése</string>
     <string name="discard_changes_dialog_title">A változtatásaid el fognak veszni. Biztos, hogy folytatod?</string>

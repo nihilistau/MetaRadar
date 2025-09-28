@@ -2,6 +2,7 @@ package f.cking.software.ui.settings
 
 import android.app.Application
 import android.net.Uri
+import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +51,7 @@ class SettingsViewModel(
     var useGpsLocationOnly: Boolean by mutableStateOf(settingsRepository.getUseGpsLocationOnly())
     var locationData: LocationProvider.LocationHandle? by mutableStateOf(null)
     var runOnStartup: Boolean by mutableStateOf(settingsRepository.getRunOnStartup())
+    var wakeUpWhileScanning: Boolean by mutableStateOf(settingsRepository.getWakeUpScreenWhileScanning())
     var silentModeEnabled: Boolean by mutableStateOf(settingsRepository.getSilentMode())
     var deepAnalysisEnabled: Boolean by mutableStateOf(settingsRepository.getEnableDeepAnalysis())
 
@@ -140,6 +142,15 @@ class SettingsViewModel(
         val newValue = !settingsRepository.getRunOnStartup()
         settingsRepository.setRunOnStartup(newValue)
         runOnStartup = newValue
+    }
+
+    fun toggleWakeUpOnScreen() {
+        val newValue = !settingsRepository.getWakeUpScreenWhileScanning()
+        settingsRepository.setWakeUpScreenWhileScanning(newValue)
+        wakeUpWhileScanning = newValue
+        if (newValue && !Settings.System.canWrite(context)) {
+            permissionHelper.requestWriteSettingsPermission()
+        }
     }
 
     fun changeSilentMode() {
