@@ -28,7 +28,7 @@ import f.cking.software.data.repo.TagsRepository
 import f.cking.software.utils.graphic.TagChip
 import f.cking.software.utils.graphic.ThemedDialog
 import kotlinx.coroutines.launch
-import org.koin.androidx.compose.getKoin
+import org.koin.compose.getKoin
 
 object TagDialog {
 
