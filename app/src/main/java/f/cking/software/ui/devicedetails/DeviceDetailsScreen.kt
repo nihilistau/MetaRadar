@@ -87,6 +87,7 @@ import f.cking.software.utils.graphic.DevicePairedIcon
 import f.cking.software.utils.graphic.DeviceTypeIcon
 import f.cking.software.utils.graphic.ExtendedAddressView
 import f.cking.software.utils.graphic.GlassSystemNavbar
+import f.cking.software.utils.graphic.HeatMapBitmapFactory
 import f.cking.software.utils.graphic.ListItem
 import f.cking.software.utils.graphic.RadarIcon
 import f.cking.software.utils.graphic.RoundedBox
@@ -104,6 +105,7 @@ import org.osmdroid.events.ZoomEvent
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.GroundOverlay
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 import org.osmdroid.views.overlay.simplefastpoint.SimpleFastPointOverlay
@@ -907,7 +909,6 @@ object DeviceDetailsScreen {
         mapColorScheme: MapColorScheme,
         pointsStyle: DeviceDetailsViewModel.PointsStyle,
     ) {
-
         when (pointsStyle) {
             DeviceDetailsViewModel.PointsStyle.MARKERS -> {
                 batchProcessor.process(mapUpdate.points, mapUpdate.map)
@@ -941,6 +942,12 @@ object DeviceDetailsScreen {
                 val fastPointOverlay = SimpleFastPointOverlay(pt, fastPointOverlayOptions)
                 mapUpdate.map.overlays.add(fastPointOverlay)
                 mapUpdate.map.invalidate()
+            }
+
+            DeviceDetailsViewModel.PointsStyle.HEAT_MAP -> {
+                val heatmapOverlay = GroundOverlay()
+                val tile = HeatMapBitmapFactory.Tile()
+                heatmapOverlay.setImage()
             }
         }
 

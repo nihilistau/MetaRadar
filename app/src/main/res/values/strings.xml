@@ -251,6 +251,7 @@
     <string name="device_history_pint_style">History style</string>
     <string name="device_history_pint_style_markers">Markers</string>
     <string name="device_history_pint_style_path">Path</string>
+    <string name="device_history_pint_style_heatmap">Heat map</string>
     <string name="time_ago">%s ago</string>
     <string name="lifetime_data_last_update">lifetime: %1$s | last update: %2$s ago</string>
     <string name="lifetime_data">lifetime: %1$s</string>
