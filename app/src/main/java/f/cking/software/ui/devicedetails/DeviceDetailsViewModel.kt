@@ -442,6 +442,7 @@ class DeviceDetailsViewModel(
     enum class PointsStyle(@StringRes val displayNameRes: Int) {
         MARKERS(R.string.device_history_pint_style_markers),
         PATH(R.string.device_history_pint_style_path),
+        HIDE_MARKERS(R.string.device_history_pint_style_hide_markers),
     }
 
     sealed interface MapCameraState {

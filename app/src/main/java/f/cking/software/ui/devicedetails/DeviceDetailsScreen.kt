@@ -4,6 +4,7 @@ import android.bluetooth.BluetoothGattCharacteristic
 import android.graphics.Paint
 import android.view.MotionEvent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,6 +29,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.outlined.Fullscreen
+import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -74,6 +77,7 @@ import androidx.compose.ui.unit.sp
 import com.google.accompanist.flowlayout.FlowRow
 import com.vanpra.composematerialdialogs.rememberMaterialDialogState
 import f.cking.software.R
+import f.cking.software.bottomRight
 import f.cking.software.dateTimeStringFormat
 import f.cking.software.domain.model.DeviceData
 import f.cking.software.domain.model.LocationModel
@@ -83,14 +87,19 @@ import f.cking.software.domain.model.toLocation
 import f.cking.software.dpToPx
 import f.cking.software.frameRate
 import f.cking.software.mapParallel
+import f.cking.software.pxToDp
+import f.cking.software.toLocation
+import f.cking.software.topLeft
 import f.cking.software.ui.AsyncBatchProcessor
 import f.cking.software.ui.map.MapView
 import f.cking.software.ui.tagdialog.TagDialog
+import f.cking.software.utils.ScreenSizeLocal
 import f.cking.software.utils.graphic.DevicePairedIcon
 import f.cking.software.utils.graphic.DeviceTypeIcon
 import f.cking.software.utils.graphic.ExtendedAddressView
 import f.cking.software.utils.graphic.GlassSystemNavbar
 import f.cking.software.utils.graphic.HeatMapBitmapFactory
+import f.cking.software.utils.graphic.HeatMapBitmapFactory.Tile
 import f.cking.software.utils.graphic.ListItem
 import f.cking.software.utils.graphic.RadarIcon
 import f.cking.software.utils.graphic.RoundedBox
@@ -120,9 +129,12 @@ import org.osmdroid.views.overlay.simplefastpoint.SimpleFastPointOverlayOptions
 import org.osmdroid.views.overlay.simplefastpoint.SimplePointTheme
 import timber.log.Timber
 import java.time.format.FormatStyle
+import java.util.concurrent.ConcurrentHashMap
 
 @OptIn(ExperimentalMaterial3Api::class)
 object DeviceDetailsScreen {
+
+    private const val TAG = "DeviceDetailsScreen"
 
     @Composable
     fun Screen(
@@ -196,7 +208,7 @@ object DeviceDetailsScreen {
         if (deviceData == null) {
             Progress(modifier)
         } else {
-            DeviceDetails(modifier = modifier, viewModel = viewModel, deviceData = deviceData)
+            DeviceDetails(modifier, viewModel, deviceData)
         }
     }
 
@@ -214,10 +226,14 @@ object DeviceDetailsScreen {
     private fun DeviceDetails(
         modifier: Modifier,
         viewModel: DeviceDetailsViewModel,
-        deviceData: DeviceData
+        deviceData: DeviceData,
     ) {
         var scrollEnabled by remember { mutableStateOf(true) }
         val isMoving = remember { mutableStateOf(false) }
+
+        val screenHeight = ScreenSizeLocal.current.height
+        val expandedHeight = screenHeight * 0.9f
+        val collapsedHeight = screenHeight * 0.4f
 
         LaunchedEffect(isMoving.value) {
             scrollEnabled = !isMoving.value
@@ -229,10 +245,14 @@ object DeviceDetailsScreen {
                 .verticalScroll(rememberScrollState(), scrollEnabled)
                 .fillMaxSize(),
         ) {
+
+            val mapToolkitOffsetDp = 100
+            val mapBlockSizePx = LocalContext.current.pxToDp(if (viewModel.mapExpanded) expandedHeight else collapsedHeight) + mapToolkitOffsetDp
             LocationHistory(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(500.dp),
+                    .animateContentSize()
+                    .height(mapBlockSizePx.dp),
                 deviceData = deviceData,
                 viewModel = viewModel,
                 isMoving = isMoving,
@@ -725,6 +745,7 @@ object DeviceDetailsScreen {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .animateContentSize()
                     .weight(1f)
             ) {
                 Map(
@@ -797,6 +818,22 @@ object DeviceDetailsScreen {
                 Icon(
                     imageVector = Icons.Outlined.Info,
                     contentDescription = stringResource(R.string.device_map_disclaimer_title),
+                    modifier = Modifier
+                        .size(24.dp)
+                        .background(Color.Black.copy(alpha = 0.1f), shape = CircleShape),
+                    tint = Color.DarkGray,
+                )
+            }
+
+            IconButton(
+                modifier = Modifier.align(Alignment.TopEnd),
+                onClick = {
+                    viewModel.mapExpanded = !viewModel.mapExpanded
+                },
+            ) {
+                Icon(
+                    imageVector = if (viewModel.mapExpanded) Icons.Outlined.FullscreenExit else Icons.Outlined.Fullscreen,
+                    contentDescription = stringResource(R.string.device_map_expand_title),
                     modifier = Modifier
                         .size(24.dp)
                         .background(Color.Black.copy(alpha = 0.1f), shape = CircleShape),
@@ -899,7 +936,29 @@ object DeviceDetailsScreen {
         val mapColorScheme = remember { MapColorScheme(colorScheme.scrim.copy(alpha = 0.6f), Color.Red) }
 
         if (mapView != null) {
-            val mapUpdate = MapUpdate(viewModel.pointsState, viewModel.cameraState, mapView!!)
+            val mapView = mapView!!
+            val mapUpdate = MapUpdate(viewModel.pointsState, viewModel.cameraState, mapView)
+
+            fun getViewport(): Tile {
+                return Tile(topLeft = mapView.projection.topLeft().toLocation(), mapView.projection.bottomRight().toLocation())
+            }
+
+            var viewport: Tile by remember { mutableStateOf(getViewport()) }
+            mapView.addMapListener(object : MapListener {
+                private fun updateViewport() {
+                    viewport = getViewport()
+                }
+
+                override fun onScroll(event: ScrollEvent): Boolean {
+                    updateViewport()
+                    return true
+                }
+
+                override fun onZoom(event: ZoomEvent): Boolean {
+                    updateViewport()
+                    return true
+                }
+            })
             LaunchedEffect(mapView, viewModel.pointsState, viewModel.pointsStyle) {
                 refreshMap(mapUpdate, batchProcessor, mapColorScheme, viewModel.pointsStyle)
             }
@@ -908,8 +967,9 @@ object DeviceDetailsScreen {
                 updateMapCamera(mapUpdate)
             }
 
-            LaunchedEffect(mapView, viewModel.pointsState, viewModel.useHeatmap) {
-                renderHeatmap(mapUpdate, viewModel)
+            val tilesState = rememberTilesState()
+            LaunchedEffect(mapView, viewModel.pointsState, viewModel.useHeatmap, viewport) {
+                renderHeatmap(mapUpdate, viewport, viewModel, tilesState)
             }
         }
     }
@@ -937,29 +997,79 @@ object DeviceDetailsScreen {
     private const val PADDING_METERS = 50.0
     private const val TILE_SIZE_METERS = 300.0
 
-    private suspend fun renderHeatmap(mapUpdate: MapUpdate, viewModel: DeviceDetailsViewModel) {
+    @Composable
+    private fun rememberTilesState() = remember { TilesState() }
+    private class TilesState {
+        var tiles = ConcurrentHashMap<Tile, TilesData>()
+    }
+
+    private data class TilesData(
+        val tile: Tile,
+        val overlay: GroundOverlay,
+        val locations: List<HeatMapBitmapFactory.Position>,
+    )
+
+    private suspend fun renderHeatmap(mapUpdate: MapUpdate, viewport: Tile, viewModel: DeviceDetailsViewModel, tilesState: TilesState) {
         if (viewModel.useHeatmap) {
-            val locations = mapUpdate.points.map { it.toLocation() }
-            val tiles = HeatMapBitmapFactory.buildTilesWithRenderPadding(locations, TILE_SIZE_METERS, PADDING_METERS)
-            tiles.mapParallel { tile ->
-                val bitmap = withContext(Dispatchers.Default) {
-                    HeatMapBitmapFactory.generateTileGradientBitmapFastSeamless(
-                        positionsAll = locations.map { HeatMapBitmapFactory.Position(it, PADDING_METERS.toFloat()) },
-                        coreTile = tile,
-                        widthPxCore = 250,
-                        renderPaddingMeters = PADDING_METERS,
-                        debugBorderPx = 0,
-                    )
+            withContext(Dispatchers.Default) {
+                val locations = mapUpdate.points.map { it.toLocation() }.filter { viewport.contains(it, 0.0) }
+                Timber.tag(TAG).d("Heatmap points: ${locations.size}")
+                val tiles = HeatMapBitmapFactory.buildTilesWithRenderPadding(locations, TILE_SIZE_METERS, PADDING_METERS)
+                Timber.tag(TAG).d("Heatmap tiles: ${tiles.size}")
+
+                val removedTiles = tilesState.tiles.values.filter { !tiles.contains(it.tile) }
+
+                removedTiles.forEach { tileData ->
+                    Timber.tag(TAG).d("Tile exists but should be removed")
+                    tilesState.tiles.remove(tileData.tile)
+                    mapUpdate.map.overlays.remove(tileData.overlay)
                 }
 
-                withContext(Dispatchers.Main) {
+                tiles.mapParallel { tile ->
+                    val positionsForTile = locations
+                        .mapNotNull {
+                            it.takeIf { tile.contains(it, PADDING_METERS) }
+                                ?.let { HeatMapBitmapFactory.Position(it, PADDING_METERS.toFloat()) }
+                        }
+                    val existedTile = tilesState.tiles[tile]
+
+                    if (existedTile != null && positionsForTile == existedTile.locations) {
+                        // tile is already added and didn't change
+                        Timber.tag(TAG).d("Tile already rendered")
+                        if (!mapUpdate.map.overlays.contains(existedTile.overlay)) {
+                            mapUpdate.map.overlays.add(0, existedTile.overlay)
+                        }
+                        return@mapParallel
+                    } else if (existedTile != null) {
+                        // tile is rendered but changed (need to re-render)
+                        Timber.tag(TAG).d("Tile exists but changed")
+                        mapUpdate.map.overlays.remove(existedTile.overlay)
+                        tilesState.tiles.remove(tile)
+                    }
+
+                    Timber.tag(TAG).d("Rendering tile with ${positionsForTile.size} points")
+                    val bitmap = HeatMapBitmapFactory.generateTileGradientBitmapFastSeamless(
+                        positionsAll = positionsForTile,
+                        coreTile = tile,
+                        widthPxCore = 300,
+                        renderPaddingMeters = PADDING_METERS,
+                        debugBorderPx = 1,
+                    )
+
                     val heatmapOverlay = GroundOverlay()
                     heatmapOverlay.setImage(bitmap)
                     heatmapOverlay.setPosition(tile.topLeft.toGeoPoint(), tile.bottomRight.toGeoPoint())
-                    mapUpdate.map.overlays.add(0, heatmapOverlay)
+                    withContext(Dispatchers.Main) {
+                        mapUpdate.map.overlays.add(0, heatmapOverlay)
+                    }
+                    tilesState.tiles[tile] = TilesData(tile, heatmapOverlay, positionsForTile)
                 }
 
-                mapUpdate.map.invalidate()
+                withContext(Dispatchers.Main) {
+                    mapUpdate.map.invalidate()
+                }
+
+                Timber.tag(TAG).d("All tiles rendered")
             }
         } else {
             mapUpdate.map.overlays.removeAll { it is GroundOverlay }
@@ -1034,6 +1144,12 @@ object DeviceDetailsScreen {
 
                 val fastPointOverlay = SimpleFastPointOverlay(pt, fastPointOverlayOptions)
                 mapUpdate.map.overlays.add(fastPointOverlay)
+                mapUpdate.map.invalidate()
+            }
+
+            DeviceDetailsViewModel.PointsStyle.HIDE_MARKERS -> {
+                batchProcessor.cancel()
+                mapUpdate.map.overlays.clearPoints()
                 mapUpdate.map.invalidate()
             }
         }

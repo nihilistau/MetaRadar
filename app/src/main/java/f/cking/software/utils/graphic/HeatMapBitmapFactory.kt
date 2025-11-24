@@ -5,6 +5,8 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
 import android.location.Location
+import androidx.collection.LruCache
+import androidx.core.graphics.createBitmap
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.cos
@@ -19,7 +21,49 @@ import kotlin.math.sqrt
 object HeatMapBitmapFactory {
 
     data class Position(val location: Location, val radiusMeters: Float)
-    data class Tile(val topLeft: Location, val bottomRight: Location)
+    data class Tile(val topLeft: Location, val bottomRight: Location) {
+
+        val tileId = "${topLeft.latitude},${topLeft.longitude}"
+
+        fun contains(location: Location, paddingMeters: Double): Boolean {
+            require(paddingMeters >= 0)
+
+            val latTop = topLeft.latitude
+            val latBottom = bottomRight.latitude
+            val lngLeft = topLeft.longitude
+            val lngRight = bottomRight.longitude
+
+            // Quickly reject impossible lat (even before meter expansion).
+            val locLat = location.latitude
+            val locLng = location.longitude
+
+            // If no padding, fast path:
+            if (paddingMeters <= 0.0) {
+                return locLat <= latTop &&
+                        locLat >= latBottom &&
+                        locLng >= lngLeft &&
+                        locLng <= lngRight
+            }
+
+            // Expand tile bounds by paddingMeters in lat/lng
+            val centerLat = (latTop + latBottom) / 2.0
+            val mPerDegLat = 111_320.0
+            val mPerDegLng = 111_320.0 * kotlin.math.cos(Math.toRadians(centerLat))
+
+            val dLat = paddingMeters / mPerDegLat
+            val dLng = paddingMeters / mPerDegLng
+
+            val paddedTop = latTop + dLat
+            val paddedBottom = latBottom - dLat
+            val paddedLeft = lngLeft - dLng
+            val paddedRight = lngRight + dLng
+
+            return locLat <= paddedTop &&
+                    locLat >= paddedBottom &&
+                    locLng >= paddedLeft &&
+                    locLng <= paddedRight
+        }
+    }
 
     private suspend fun generateTileGradientBitmapFastNoNormalize(
         positions: List<Position>,
@@ -57,6 +101,7 @@ object HeatMapBitmapFactory {
             val yNorm = (latTop - lat) / (latTop - latBottom)
             return (xNorm * wL).toFloat() to (yNorm * hL).toFloat()
         }
+
         fun idxL(x: Int, y: Int) = y * wL + x
 
         val intensityL = FloatArray(sizeL)
@@ -118,8 +163,8 @@ object HeatMapBitmapFactory {
             }
         }
 
-        if (intensityL.maxOrNull() ?: 0f <= 0f) {
-            return Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
+        if ((intensityL.maxOrNull() ?: 0f) <= 0f) {
+            return createBitmap(widthPx, heightPx)
         }
 
         val blurredL = gaussianBlurSeparable(intensityL, wL, hL, blurSigmaPx)
@@ -298,6 +343,18 @@ object HeatMapBitmapFactory {
         }
     }
 
+    private data class BitmapCacheKey(
+        val positionsAll: List<Position>,
+        val coreTile: Tile,
+        val widthPxCore: Int,
+        val renderPaddingMeters: Double,
+        val downsample: Int = 5,
+        val blurSigmaPxLow: Float = 4f,
+        val debugBorderPx: Int = 0
+    )
+
+    private val bitmapCache = LruCache<BitmapCacheKey, Bitmap>(maxSize = 100)
+
     suspend fun generateTileGradientBitmapFastSeamless(
         positionsAll: List<Position>,
         coreTile: Tile,
@@ -308,6 +365,11 @@ object HeatMapBitmapFactory {
         debugBorderPx: Int = 0
     ): Bitmap {
         require(widthPxCore > 0)
+
+        val key = BitmapCacheKey(positionsAll, coreTile, widthPxCore, renderPaddingMeters, downsample, blurSigmaPxLow, debugBorderPx)
+
+        val cachedBitmap = bitmapCache[key]
+        if (cachedBitmap != null) return cachedBitmap
 
         // 1) Build render tile (padded)
         val renderTile = paddedRenderTile(coreTile, renderPaddingMeters)
@@ -339,6 +401,8 @@ object HeatMapBitmapFactory {
         // optional border for debug
         drawDebugBorder(bmpCore, debugBorderPx)
 
+        bitmapCache.put(key, bmpCore)
+
         return bmpCore
     }
 
@@ -358,6 +422,7 @@ object HeatMapBitmapFactory {
             val t = (lng - lngLeftR) / (lngRightR - lngLeftR)
             return (t * renderWidthPx).roundToInt()
         }
+
         fun yPx(lat: Double): Int {
             val t = (latTopR - lat) / (latTopR - latBottomR)
             return (t * renderHeightPx).roundToInt()
@@ -426,6 +491,7 @@ object HeatMapBitmapFactory {
         }
 
         data class IJ(val i: Int, val j: Int)
+
         val tilesToRender = HashSet<IJ>(points.size * 4)
 
         val N = tileSizeMeters
