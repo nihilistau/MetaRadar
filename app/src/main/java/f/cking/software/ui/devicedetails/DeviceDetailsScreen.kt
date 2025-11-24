@@ -88,6 +88,7 @@ import f.cking.software.dpToPx
 import f.cking.software.frameRate
 import f.cking.software.mapParallel
 import f.cking.software.pxToDp
+import f.cking.software.splitToBatchesEqual
 import f.cking.software.toLocation
 import f.cking.software.topLeft
 import f.cking.software.ui.AsyncBatchProcessor
@@ -132,7 +133,6 @@ import org.osmdroid.views.overlay.simplefastpoint.SimpleFastPointOverlayOptions
 import org.osmdroid.views.overlay.simplefastpoint.SimplePointTheme
 import timber.log.Timber
 import java.time.format.FormatStyle
-import java.util.concurrent.ConcurrentHashMap
 
 @OptIn(ExperimentalMaterial3Api::class)
 object DeviceDetailsScreen {
@@ -905,12 +905,10 @@ object DeviceDetailsScreen {
 
         fun updateViewport() {
             pendingViewport = getViewport()
-            Timber.tag(TAG).d("Update viewport")
         }
 
         fun commitViewPort() {
             committedViewport = pendingViewport
-            Timber.tag(TAG).d("Commit viewport")
         }
 
         MapView(
@@ -1013,7 +1011,7 @@ object DeviceDetailsScreen {
     @Composable
     private fun rememberTilesState() = remember { TilesState() }
     private class TilesState {
-        var tiles = ConcurrentHashMap<Tile, TilesData>()
+        var tiles = HashMap<Tile, TilesData>()
         var lastLocationsState: List<LocationModel> = emptyList()
     }
 
@@ -1029,12 +1027,26 @@ object DeviceDetailsScreen {
             withContext(Dispatchers.Default) {
                 val locations = mapUpdate.points.map { it.toLocation() }
                 Timber.tag(TAG).d("Heatmap points: ${locations.size}")
+                val pointsChanged = tilesState.lastLocationsState.size != locations.size
                 val tiles = HeatMapBitmapFactory.buildTilesWithRenderPaddingStable(locations, TILE_SIZE_METERS, PADDING_METERS)
-                    .filter { viewport.intersects(it) }
+                    .asSequence()
+                    .filter {
+                        val inViewport = viewport.intersects(it)
+
+                        if (!pointsChanged) {
+                            val existedTile = tilesState.tiles[it]
+                            val isAdded = mapUpdate.map.overlays.contains(existedTile?.overlay)
+                            inViewport && (!tilesState.tiles.containsKey(it) || !isAdded)
+                        } else {
+                            inViewport
+                        }
+                    }
+                    .sortedBy { tilesState.tiles.containsKey(it) }
+                    .toList()
+
                 Timber.tag(TAG).d("Heatmap tiles: ${tiles.size}")
 
-                if (tilesState.lastLocationsState != mapUpdate.points) {
-
+                if (pointsChanged) {
                     val removedTiles = tilesState.tiles.values.filter { !tiles.contains(it.tile) }
                     removedTiles.forEach { tileData ->
                         Timber.tag(TAG).d("Tile exists but should be removed")
@@ -1045,62 +1057,69 @@ object DeviceDetailsScreen {
 
                 tilesState.lastLocationsState = mapUpdate.points
 
-                val loadingJob = launch {
+                val loadingJob = launch(Dispatchers.Main) {
                     delay(30)
                     yield()
                     viewModel.loadingHeatmap = true
                 }
-                tiles.mapParallel { tile ->
-                    val positionsForTile = locations
-                        .mapNotNull {
-                            it.takeIf { tile.contains(it, PADDING_METERS) }
-                                ?.let { HeatMapBitmapFactory.Position(it, PADDING_METERS.toFloat()) }
-                        }
-                    val existedTile = tilesState.tiles[tile]
 
-                    if (existedTile != null && positionsForTile == existedTile.locations) {
-                        // tile is already added and didn't change
-                        Timber.tag(TAG).d("Tile already rendered")
-                        withContext(Dispatchers.IO) {
-                            if (!mapUpdate.map.overlays.contains(existedTile.overlay)) {
-                                mapUpdate.map.overlays.add(0, existedTile.overlay)
+                tiles.splitToBatchesEqual(10).mapParallel { batch ->
+                    batch.map { tile ->
+                        withContext(Dispatchers.Default) {
+
+                            val positionsForTile = locations
+                                .mapNotNull {
+                                    it.takeIf { tile.contains(it, PADDING_METERS) }
+                                        ?.let { HeatMapBitmapFactory.Position(it, PADDING_METERS.toFloat()) }
+                                }
+                            val existedTile = tilesState.tiles[tile]
+
+                            if (existedTile != null && positionsForTile == existedTile.locations) {
+                                // tile is already added and didn't change
+                                Timber.tag(TAG).d("Tile already rendered")
+                                withContext(Dispatchers.IO) {
+                                    if (!mapUpdate.map.overlays.contains(existedTile.overlay)) {
+                                        mapUpdate.map.overlays.add(0, existedTile.overlay)
+                                        mapUpdate.map.invalidate()
+                                    }
+                                }
+                                return@withContext
+                            } else if (existedTile != null) {
+                                // tile is rendered but changed (need to re-render)
+                                Timber.tag(TAG).d("Tile exists but changed")
+                                mapUpdate.map.overlays.remove(existedTile.overlay)
+                                tilesState.tiles.remove(tile)
+                            }
+                            Timber.tag(TAG).d("Rendering tile with ${positionsForTile.size} points")
+                            val bitmap = HeatMapBitmapFactory.generateTileGradientBitmapFastSeamless(
+                                positionsAll = positionsForTile,
+                                coreTile = tile,
+                                widthPxCore = 300,
+                                renderPaddingMeters = PADDING_METERS,
+                                debugBorderPx = 0,
+                            )
+
+                            yield()
+                            val heatmapOverlay = GroundOverlay()
+                            heatmapOverlay.setImage(bitmap)
+                            heatmapOverlay.transparency = 0.3f
+                            heatmapOverlay.setPosition(tile.topLeft.toGeoPoint(), tile.bottomRight.toGeoPoint())
+                            withContext(Dispatchers.Main) {
+                                mapUpdate.map.overlays.add(0, heatmapOverlay)
                                 mapUpdate.map.invalidate()
                             }
+                            tilesState.tiles[tile] = TilesData(tile, heatmapOverlay, positionsForTile)
                         }
-                        return@mapParallel
-                    } else if (existedTile != null) {
-                        // tile is rendered but changed (need to re-render)
-                        Timber.tag(TAG).d("Tile exists but changed")
-                        mapUpdate.map.overlays.remove(existedTile.overlay)
-                        tilesState.tiles.remove(tile)
                     }
-                    Timber.tag(TAG).d("Rendering tile with ${positionsForTile.size} points")
-                    val bitmap = HeatMapBitmapFactory.generateTileGradientBitmapFastSeamless(
-                        positionsAll = positionsForTile,
-                        coreTile = tile,
-                        widthPxCore = 300,
-                        renderPaddingMeters = PADDING_METERS,
-                        debugBorderPx = 0,
-                    )
-
-                    yield()
-                    val heatmapOverlay = GroundOverlay()
-                    heatmapOverlay.setImage(bitmap)
-                    heatmapOverlay.setPosition(tile.topLeft.toGeoPoint(), tile.bottomRight.toGeoPoint())
-                    withContext(Dispatchers.Main) {
-                        mapUpdate.map.overlays.add(0, heatmapOverlay)
-                        mapUpdate.map.invalidate()
-                    }
-                    tilesState.tiles[tile] = TilesData(tile, heatmapOverlay, positionsForTile)
                 }
 
                 Timber.tag(TAG).d("All tiles rendered")
                 loadingJob.cancel()
-                viewModel.loadingHeatmap = false
             }
         } else {
             mapUpdate.map.overlays.removeAll { it is GroundOverlay }
         }
+        viewModel.loadingHeatmap = false
         mapUpdate.map.invalidate()
     }
 

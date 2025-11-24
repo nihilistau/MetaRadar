@@ -21,13 +21,13 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 import kotlin.math.tan
 
+/**
+ * Most of the class is AI generated
+ */
 object HeatMapBitmapFactory {
 
     data class Position(val location: Location, val radiusMeters: Float)
     data class Tile(val topLeft: Location, val bottomRight: Location) {
-
-        val tileId = "${topLeft.latitude},${topLeft.longitude}"
-
 
         /**
          * True if this tile intersects (collides) with [other].
@@ -121,13 +121,12 @@ object HeatMapBitmapFactory {
         }
     }
 
-    private suspend fun generateTileGradientBitmapFastNoNormalize(
+    private fun generateTileGradientBitmapFastNoNormalize(
         positions: List<Position>,
         tile: Tile,
         widthPx: Int,
         downsample: Int,
         blurSigmaPx: Float,
-        debugBorderPx: Int = 0
     ): Bitmap {
         fun metersPerDegLat(): Double = 111_320.0
         fun metersPerDegLng(atLatDeg: Double): Double =
@@ -267,10 +266,7 @@ object HeatMapBitmapFactory {
             }
         }
 
-        val immutable = Bitmap.createBitmap(out, widthPx, heightPx, Bitmap.Config.ARGB_8888)
-        val bmp = immutable.copy(Bitmap.Config.ARGB_8888, true)
-        drawDebugBorder(bmp, debugBorderPx)
-        return bmp
+        return Bitmap.createBitmap(out, widthPx, heightPx, Bitmap.Config.ARGB_8888)
     }
 
     /**
@@ -411,12 +407,59 @@ object HeatMapBitmapFactory {
 
     private val bitmapCache = LruCache<BitmapCacheKey, Bitmap>(maxSize = 100)
 
-    suspend fun generateTileGradientBitmapFastSeamless(
+    private var simpleDebugBitmap: Bitmap? = null
+
+    fun simpleDebugBitmap(
+        coreTile: Tile,
+        widthPxCore: Int,
+        renderPaddingMeters: Double,
+    ): Bitmap {
+
+        if (simpleDebugBitmap != null) return simpleDebugBitmap!!
+
+        fun metersPerDegLat(): Double = 111_320.0
+        fun metersPerDegLng(atLatDeg: Double): Double =
+            111_320.0 * cos(Math.toRadians(atLatDeg))
+
+        val latTop = coreTile.topLeft.latitude
+        val latBottom = coreTile.bottomRight.latitude
+        val lngLeft = coreTile.topLeft.longitude
+        val lngRight = coreTile.bottomRight.longitude
+        val centerLat = (latTop + latBottom) / 2.0
+
+        // 1) Build render tile (padded)
+        val renderTile = paddedRenderTile(coreTile, renderPaddingMeters)
+        val widthPx = computeWidthForRenderTile(coreTile, renderTile, widthPxCore)
+
+        val tileWidthMeters = abs(lngRight - lngLeft) * metersPerDegLng(centerLat)
+        val tileHeightMeters = abs(latTop - latBottom) * metersPerDegLat()
+        val heightPx = max(1, round(widthPx * (tileHeightMeters / tileWidthMeters)).toInt())
+
+        val out = IntArray(widthPx * heightPx)
+        val bmpPadded = Bitmap.createBitmap(out, widthPx, heightPx, Bitmap.Config.ARGB_8888)
+
+        val cropRect = computeCoreCropRectPx(coreTile, renderTile, bmpPadded.width, bmpPadded.height)
+
+        val emptyBitmap = Bitmap.createBitmap(
+            bmpPadded,
+            cropRect.left,
+            cropRect.top,
+            cropRect.width(),
+            cropRect.height()
+        ).copy(Bitmap.Config.ARGB_8888, true)
+
+        drawDebugBorder(emptyBitmap, 2)
+        simpleDebugBitmap = emptyBitmap
+
+        return simpleDebugBitmap!!
+    }
+
+    fun generateTileGradientBitmapFastSeamless(
         positionsAll: List<Position>,
         coreTile: Tile,
         widthPxCore: Int,
         renderPaddingMeters: Double,
-        downsample: Int = 5,
+        downsample: Int = 4,
         blurSigmaPxLow: Float = 4f,
         debugBorderPx: Int = 0
     ): Bitmap {
@@ -441,25 +484,28 @@ object HeatMapBitmapFactory {
             widthPx = computeWidthForRenderTile(coreTile, renderTile, widthPxCore),
             downsample = downsample,
             blurSigmaPx = blurSigmaPxLow,
-            debugBorderPx = 0
         )
 
         // 4) Crop padded bitmap back to core area
         val cropRect = computeCoreCropRectPx(coreTile, renderTile, bmpPadded.width, bmpPadded.height)
-        val bmpCore = Bitmap.createBitmap(
+
+        val immutableBitmap = Bitmap.createBitmap(
             bmpPadded,
             cropRect.left,
             cropRect.top,
             cropRect.width(),
             cropRect.height()
-        ).copy(Bitmap.Config.ARGB_8888, true)
+        )
 
-        // optional border for debug
-        drawDebugBorder(bmpCore, debugBorderPx)
-
-        bitmapCache.put(key, bmpCore)
-
-        return bmpCore
+        val result = if (debugBorderPx == 0) {
+            immutableBitmap
+        } else {
+            val bmpCore = immutableBitmap.copy(Bitmap.Config.ARGB_8888, true)
+            drawDebugBorder(bmpCore, debugBorderPx)
+            bmpCore
+        }
+        bitmapCache.put(key, result)
+        return result
     }
 
     private fun computeCoreCropRectPx(
@@ -497,136 +543,6 @@ object HeatMapBitmapFactory {
         )
     }
 
-    /**
-     * Build fixed NxN-meter tiles (non-overlapping grid), anchored at global top-left.
-     * Returns all non-empty core tiles PLUS any neighbor tiles required by paddingMeters
-     * so point radii near borders won't be clipped.
-     *
-     * Neighbor tiles may be empty; they're included as render buffers.
-     */
-    fun buildTilesWithRenderPaddingOld(
-        points: List<Location>,
-        tileSizeMeters: Double,
-        paddingMeters: Double = 0.0
-    ): List<Tile> {
-        if (points.isEmpty() || tileSizeMeters <= 0.0 || paddingMeters < 0.0) return emptyList()
-
-        // 1) Global bounds to set origin and reference latitude
-        var minLat = Double.POSITIVE_INFINITY
-        var maxLat = Double.NEGATIVE_INFINITY
-        var minLng = Double.POSITIVE_INFINITY
-        var maxLng = Double.NEGATIVE_INFINITY
-
-        for (p in points) {
-            val lat = p.latitude
-            val lng = p.longitude
-            if (lat < minLat) minLat = lat
-            if (lat > maxLat) maxLat = lat
-            if (lng < minLng) minLng = lng
-            if (lng > maxLng) maxLng = lng
-        }
-
-        val refLat = (minLat + maxLat) / 2.0
-        val mPerDegLat = 111_320.0
-        val mPerDegLng = 111_320.0 * cos(Math.toRadians(refLat))
-
-        // Origin at global TOP-LEFT (NW)
-        val originLat = maxLat
-        val originLng = minLng
-
-        fun toMetersFromOrigin(lat: Double, lng: Double): Pair<Double, Double> {
-            val x = (lng - originLng) * mPerDegLng   // east +
-            val y = (originLat - lat) * mPerDegLat   // south +
-            return x to y
-        }
-
-        fun toLatLngFromOrigin(xMeters: Double, yMeters: Double): Pair<Double, Double> {
-            val lat = originLat - (yMeters / mPerDegLat)
-            val lng = originLng + (xMeters / mPerDegLng)
-            return lat to lng
-        }
-
-        data class IJ(val i: Int, val j: Int)
-
-        val tilesToRender = HashSet<IJ>(points.size * 4)
-
-        val N = tileSizeMeters
-        val P = paddingMeters
-
-        // Helper: how many tiles outward are needed if a point is d meters from an edge?
-        fun outwardSteps(distToEdge: Double): Int {
-            if (P <= distToEdge) return 0
-            val extra = P - distToEdge
-            return ceil(extra / N).toInt().coerceAtLeast(1)
-        }
-
-        // 2) For each point, add its core tile + required neighbor tiles
-        for (p in points) {
-            val (x, y) = toMetersFromOrigin(p.latitude, p.longitude)
-
-            val i0 = floor(x / N).toInt()
-            val j0 = floor(y / N).toInt()
-            tilesToRender.add(IJ(i0, j0))
-
-            val lx = x - i0 * N          // local x in [0, N)
-            val ly = y - j0 * N          // local y in [0, N)
-
-            val distLeft = lx
-            val distRight = N - lx
-            val distTop = ly             // because y grows south from top-left origin
-            val distBottom = N - ly
-
-            val leftSteps = outwardSteps(distLeft)
-            val rightSteps = outwardSteps(distRight)
-            val topSteps = outwardSteps(distTop)
-            val bottomSteps = outwardSteps(distBottom)
-
-            // Add side neighbors
-            for (s in 1..leftSteps) tilesToRender.add(IJ(i0 - s, j0))
-            for (s in 1..rightSteps) tilesToRender.add(IJ(i0 + s, j0))
-            for (s in 1..topSteps) tilesToRender.add(IJ(i0, j0 - s))
-            for (s in 1..bottomSteps) tilesToRender.add(IJ(i0, j0 + s))
-
-            // Add corner neighbors (cross-product of required steps)
-            for (sx in 1..leftSteps) {
-                for (sy in 1..topSteps) tilesToRender.add(IJ(i0 - sx, j0 - sy))
-                for (sy in 1..bottomSteps) tilesToRender.add(IJ(i0 - sx, j0 + sy))
-            }
-            for (sx in 1..rightSteps) {
-                for (sy in 1..topSteps) tilesToRender.add(IJ(i0 + sx, j0 - sy))
-                for (sy in 1..bottomSteps) tilesToRender.add(IJ(i0 + sx, j0 + sy))
-            }
-        }
-
-        // 3) Convert tile indices -> geographic Tiles
-        fun makeLocation(lat: Double, lng: Double) =
-            Location("tile").apply {
-                latitude = lat
-                longitude = lng
-            }
-
-        val result = ArrayList<Tile>(tilesToRender.size)
-        for ((i, j) in tilesToRender) {
-            val x0 = i * N
-            val y0 = j * N
-            val x1 = x0 + N
-            val y1 = y0 + N
-
-            val (latTop, lngLeft) = toLatLngFromOrigin(x0, y0)
-            val (latBottom, lngRight) = toLatLngFromOrigin(x1, y1)
-
-            result.add(
-                Tile(
-                    topLeft = makeLocation(latTop, lngLeft),
-                    bottomRight = makeLocation(latBottom, lngRight)
-                )
-            )
-        }
-
-        return result
-    }
-
-
     fun buildTilesWithRenderPaddingStable(
         points: List<Location>,
         tileSizeMeters: Double,
@@ -660,6 +576,7 @@ object HeatMapBitmapFactory {
         }
 
         data class IJ(val i: Int, val j: Int)
+
         val tilesToRender = HashSet<IJ>(points.size * 4)
 
         fun outwardSteps(distToEdge: Double): Int {
